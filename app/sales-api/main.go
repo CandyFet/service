@@ -4,6 +4,8 @@ import (
 	"expvar"
 	"fmt"
 	"log"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"time"
 
@@ -72,6 +74,25 @@ func run(log *log.Logger) error {
 		errors.Wrap(err, "generating config for output")
 	}
 	log.Printf("main :Config :\n%v\n", out)
+
+	// =================================================================
+	// Start Debug Service
+	//
+	// /debug/pprof - Added to default mux by importing net/http/pprof package
+	// /debug/vars - Added to default mux by importing expvar package
+	//
+	// Not concerned with shutting this down when application is shutdown
+
+	log.Println("main: Initializing debugging support")
+
+	go func() {
+		log.Printf("main: Debug Listening %s", cfg.Web.DebugHost)
+		if err := http.ListenAndServe(cfg.Web.DebugHost, http.DefaultServeMux); err != nil {
+			log.Printf("main: Debug Listener closed : %v", err)
+		}
+	}()
+
+	select {}
 
 	return nil
 }
