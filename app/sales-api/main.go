@@ -12,6 +12,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/CandyFet/service/app/sales-api/handlers"
+
 	"github.com/ardanlabs/conf"
 	"github.com/pkg/errors"
 )
@@ -105,8 +107,8 @@ func run(log *log.Logger) error {
 	signal.Notify(shutdown, os.Interrupt, syscall.SIGTERM)
 
 	api := http.Server{
-		Addr: cfg.Web.APIHost,
-		// Handler: handlers.API(build, shutdown, log, db, auth),
+		Addr:         cfg.Web.APIHost,
+		Handler:      handlers.API(build, shutdown, log),
 		ReadTimeout:  cfg.Web.ReadTimeout,
 		WriteTimeout: cfg.Web.WriteTimeout,
 	}
