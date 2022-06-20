@@ -14,7 +14,7 @@ import (
 
 // API constructs an http.Handler with all application routes
 func API(build string, shutdown chan os.Signal, log *log.Logger) *web.App {
-	app := web.NewApp(shutdown, mid.Logger(log), mid.Errors(log))
+	app := web.NewApp(shutdown, mid.Logger(log), mid.Errors(log), mid.Panics(log))
 
 	check := check{
 		log: log,
