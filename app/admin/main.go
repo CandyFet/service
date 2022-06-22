@@ -6,8 +6,12 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"os"
+	"time"
+
+	"github.com/dgrijalva/jwt-go"
 )
 
 /*
@@ -16,7 +20,55 @@ import (
 */
 
 func main() {
-	keygen()
+	// keygen()
+	tokenGen()
+}
+
+func tokenGen() {
+	privatePEM, err := ioutil.ReadFile("/Users/candyfet/study/ardanlab/service/private.pem")
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	privateKey, err := jwt.ParseRSAPrivateKeyFromPEM(privatePEM)
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	// Generating a token requires a set pf claims. In this applications
+	// case, we only care about defining the subject and the user in question and
+	// the roles they have on the database. This token will expire in a year.
+	//
+	// iss (issuer): Issuer of the JWT
+	// sub (subject): Subject of the JWT (the user)
+	// aud (audience): Recipient for which the JWT expires
+	// exp (expiration time): Time after which the JWT expires
+	// nbf (not before time): Time before which the JWT must not be accepted for processing
+	// iat (issued at time): Time at which the JWT was issued; can be used to determine age of the JWT
+	// jti (JWT ID): Unique identifier; can be used to prevent the JWT from being replayed
+	claims := struct {
+		jwt.StandardClaims
+		Authorized []string
+	}{
+		StandardClaims: jwt.StandardClaims{
+			Issuer:    "service project",
+			Subject:   "123456789",
+			ExpiresAt: time.Now().Add(87600 * time.Hour).Unix(),
+			IssuedAt:  time.Now().Unix(),
+		},
+		Authorized: []string{"ADMIN"},
+	}
+
+	method := jwt.GetSigningMethod("RS256")
+	tkn := jwt.NewWithClaims(method, claims)
+	tkn.Header["kid"] = "asdgfqwxac-123123-asdq"
+
+	str, err := tkn.SignedString(privateKey)
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	fmt.Printf("-----BEGIN TOKEN-----\n%s\n-----END TOKEN-----\n", str)
 }
 
 func keygen() {
