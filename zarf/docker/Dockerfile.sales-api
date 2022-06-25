@@ -1,0 +1,33 @@
+# Build the Go Bunary.
+FROM golang:1.17 as build_sales-api
+ENV CGO_ENABLED 0
+ARG VCS_REF
+
+# Create a location in the container for the source code. Using the
+# default GOPATH location.
+RUN mkdir -p /service
+
+# Copy the source code into the container.
+WORKDIR /service
+COPY . .
+
+# Build the service binary. We are doing this last since this will be different
+# every time we run through this process.
+WORKDIR /service/app/sales-api
+RUN go build -ldflags "-X main.build=${VCS_REF}"
+
+
+# Run the Go Binary in Alpine.
+FROM alpine:3.12
+ARG BUILD_DATE
+ARG VCS_REF
+COPY --from=build_sales-api /service/private.pem /service/private.pem
+COPY --from=build_sales-api /service/app/sales-api/sales-api /service/sales-api
+WORKDIR /service
+CMD ["./sales-api"]
+
+LABEL org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.title='sales-api' \
+      org.opencontainers.image.authors="Fedor Zasechkin <inorect.a.z@gmail.com>" \
+      org.opencontainers.image.source="https://github.com/candyfet/service/app/sales-api" \
+      org.opencontainers.image.revision="${VCS_REF}"

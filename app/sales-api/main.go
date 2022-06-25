@@ -48,7 +48,7 @@ func run(log *log.Logger) error {
 		}
 		Auth struct {
 			KeyID          string `conf:"default:d8420866-1615-43d3-9a25-928120080b8f"`
-			PrivateKeyFile string `conf:"default:/Users/candyfet/study/ardanlab/service/private.pem"`
+			PrivateKeyFile string `conf:"default:/service/private.pem"`
 			Algorithm      string `conf:"default:RS256"`
 		}
 	}
