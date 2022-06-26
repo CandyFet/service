@@ -17,7 +17,7 @@ sales-api:
 # Running from within k8s/dev
 
 kind-up:
-	kind create cluster --image kindest/node:v1.19.1 --name service-starter-cluster --config zarf/k8s/dev/kind-config.yaml
+	kind create cluster --image kindest/node:v1.24.2 --name service-starter-cluster --config zarf/k8s/dev/kind-config.yaml
 
 kind-down:
 	kind delete cluster --name service-starter-cluster
@@ -29,7 +29,7 @@ kind-services:
 	kustomize build zarf/k8s/dev | kubectl apply -f -
 
 kind-sales-api:
-	kind laod docker-image sales-api-amd64:1.0 --name service-starter-cluster
+	kind load docker-image sales-api-amd64:1.0 --name service-starter-cluster
 	kubectl delete pods -lapp=sales-api
 
 kind-logs:

@@ -1,6 +1,6 @@
- apiVersion: apps/v1
- kind: Deployment
- metadata:
+apiVersion: apps/v1
+kind: Deployment
+metadata:
   name: sales-api
 spec:
   selector:
@@ -14,7 +14,7 @@ spec:
       dnsPolicy: ClusterFirstWithHostNet
       hostNetwork: true
       containers:
-      - names: zipkin
+      - name: zipkin
         image: openzipkin/zipkin:2.21
         ports:
         - name: zipkin
@@ -31,4 +31,55 @@ spec:
           valueFrom:
             configMapKeyRef:
               name: app-config
-              key: zipkin_reporter_uri              
+              key: zipkin_reporter_uri
+        - name: KUBERNETES_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: KUBERNETES_PODNAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: KUBERNETES_NAMESPACE_POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: KUBERNETES_NODENAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        ports:
+        - name: app
+          containerPort: 3000
+        - name: app-debug
+          containerPort: 4000
+        readinessProbe:
+          httpGet:
+            path: /readiness
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 15
+        livenessProbe:
+          httpGet:
+            path: /liveness
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 15
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sales-api
+spec:
+  selector:
+    service: sales-api
+  ports:
+  - name: zipkin
+    port: 9491
+    targetPort: zipkin
+  - name: app
+    port: 3000
+    targetPort: app
+  - name: app-debug
+    port: 4000
+    targetPort: app-debug
