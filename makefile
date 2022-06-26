@@ -28,7 +28,7 @@ kind-load:
 kind-services:
 	kustomize build zarf/k8s/dev | kubectl apply -f -
 
-kind-sales-api:
+kind-sales-api: sales-api
 	kind load docker-image sales-api-amd64:1.0 --name service-starter-cluster
 	kubectl delete pods -lapp=sales-api
 
