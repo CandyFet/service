@@ -67,7 +67,7 @@ func Log(query string, args ...interface{}) string {
 		case []byte:
 			a = string(v)
 		case []string:
-			a = strings.Join(v, " ")
+			a = strings.Join(v, ",")
 		default:
 			a = fmt.Sprintf("%v", v)
 		}
