@@ -16,6 +16,7 @@ import (
 
 	"github.com/CandyFet/service/app/sales-api/handlers"
 	"github.com/CandyFet/service/business/auth"
+	"github.com/CandyFet/service/foundation/database"
 	"github.com/dgrijalva/jwt-go"
 
 	"github.com/ardanlabs/conf"
@@ -50,6 +51,13 @@ func run(log *log.Logger) error {
 			KeyID          string `conf:"default:d8420866-1615-43d3-9a25-928120080b8f"`
 			PrivateKeyFile string `conf:"default:/service/private.pem"`
 			Algorithm      string `conf:"default:RS256"`
+		}
+		DB struct {
+			User       string `conf:"default:postgres"`
+			Password   string `conf:"default:postgres,noprint"`
+			Host       string `conf:"default:db"`
+			Name       string `conf:"default:postgres"`
+			DisableTLS bool   `conf:"default:true"`
 		}
 	}
 	cfg.Version.SVN = build
@@ -117,7 +125,25 @@ func run(log *log.Logger) error {
 		return errors.Wrap(err, "constructing auth")
 	}
 
-	// Create a new key using
+	// =================================================================
+	// Start Database
+
+	log.Println("main: Initializing database support")
+
+	db, err := database.Open(database.Config{
+		User:       cfg.DB.User,
+		Password:   cfg.DB.Password,
+		Host:       cfg.DB.Host,
+		Name:       cfg.DB.Name,
+		DisableTLS: cfg.DB.DisableTLS,
+	})
+	if err != nil {
+		return errors.Wrap(err, "connecting to db")
+	}
+	defer func() {
+		log.Printf("main: Database Stopping : %s", cfg.DB.Host)
+		db.Close()
+	}()
 
 	// =================================================================
 	// Start Debug Service
@@ -147,7 +173,7 @@ func run(log *log.Logger) error {
 
 	api := http.Server{
 		Addr:         cfg.Web.APIHost,
-		Handler:      handlers.API(build, shutdown, log, auth),
+		Handler:      handlers.API(build, shutdown, log, auth, db),
 		ReadTimeout:  cfg.Web.ReadTimeout,
 		WriteTimeout: cfg.Web.WriteTimeout,
 	}
