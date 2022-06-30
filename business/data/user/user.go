@@ -9,6 +9,7 @@ import (
 
 	"github.com/CandyFet/service/business/auth"
 	"github.com/CandyFet/service/foundation/database"
+	"github.com/dgrijalva/jwt-go"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 	"github.com/pkg/errors"
@@ -137,13 +138,14 @@ func (u User) Delete(ctx context.Context, traceID string, userID string) error {
 }
 
 // Query retrieves a list of exsisting users from the database.
-func (u User) Query(ctx context.Context, traceID string) ([]Info, error) {
-	const q = `SELECT * FROM users`
+func (u User) Query(ctx context.Context, traceID string, pageNumber int, rowsPerPage int) ([]Info, error) {
+	const q = `SELECT * FROM users ORDER BY user_id OFFSET $1 ROWS FETCH NEXT $2 ROWS ONLY`
+	offset := (pageNumber - 1) * rowsPerPage
 
-	u.log.Printf("%s : %s : query : %s", traceID, "user.Query", database.Log(q))
+	u.log.Printf("%s : %s : query : %s", traceID, "user.Query", database.Log(q, offset, rowsPerPage))
 
 	users := []Info{}
-	if err := u.db.SelectContext(ctx, &users, q); err != nil {
+	if err := u.db.SelectContext(ctx, &users, q, offset, rowsPerPage); err != nil {
 		return nil, errors.Wrap(err, "selecting users")
 	}
 
@@ -198,4 +200,35 @@ func (u User) QueryByEmail(ctx context.Context, traceID string, claims auth.Clai
 	}
 
 	return usr, nil
+}
+
+func (u User) Authenticate(ctx context.Context, traceID string, now time.Time, email, password string) (auth.Claims, error) {
+	const q = `SELECT * FROM users WHERE email = $1`
+
+	u.log.Printf("%s : %s : query : %s", traceID, "user.QueryByEmail", database.Log(q, email))
+
+	var usr Info
+
+	if err := u.db.GetContext(ctx, &usr, q, email); err != nil {
+		if err == sql.ErrNoRows {
+			return auth.Claims{}, ErrNotFound
+		}
+		return auth.Claims{}, errors.Wrapf(err, "select user %q", email)
+	}
+
+	if err := bcrypt.CompareHashAndPassword(usr.PasswordHash, []byte(password)); err != nil {
+		return auth.Claims{}, ErrAuthenticationFailure
+	}
+
+	claims := auth.Claims{
+		StandardClaims: jwt.StandardClaims{
+			Subject:   usr.ID,
+			Issuer:    "service project",
+			ExpiresAt: time.Now().UTC().Add(time.Hour).Unix(),
+			IssuedAt:  time.Now().UTC().Unix(),
+		},
+		Roles: usr.Roles,
+	}
+
+	return claims, nil
 }
