@@ -69,7 +69,7 @@ func Authorize(roles ...string) web.Middleware {
 				return errors.New("claims missing from context")
 			}
 
-			if !claims.Authorize(roles...) {
+			if !claims.Authorized(roles...) {
 				return ErrForbidden
 			}
 

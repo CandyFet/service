@@ -60,7 +60,7 @@ CREATE TABLE products (
 		Script: `
 CREATE TABLE sales (
 	sale_id 			UUID,
-	product_id 		TEXT,
+	product_id 		UUID,
 	quantity 			INT,
 	paid 					INT,
 	date_created  TIMESTAMP,
