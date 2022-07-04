@@ -102,7 +102,7 @@ func (ug userGroup) update(ctx context.Context, w http.ResponseWriter, r *http.R
 	}
 
 	var upd user.UpdateUser
-	if err := web.Decode(r, upd); err != nil {
+	if err := web.Decode(r, &upd); err != nil {
 		return errors.Wrapf(err, "unable to decode payload")
 	}
 

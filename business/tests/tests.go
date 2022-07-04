@@ -3,12 +3,17 @@ package tests
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"fmt"
 	"log"
 	"os"
 	"testing"
 	"time"
 
+	"github.com/CandyFet/service/business/auth"
 	"github.com/CandyFet/service/business/data/schema"
+	"github.com/CandyFet/service/business/data/user"
 	"github.com/CandyFet/service/foundation/database"
 	"github.com/CandyFet/service/foundation/web"
 	"github.com/google/uuid"
@@ -109,4 +114,80 @@ func StringPointer(s string) *string {
 // but it's useful in some tests.
 func IntPointer(i int) *int {
 	return &i
+}
+
+// Test owns state for running and shutting down tests.
+type Test struct {
+	TraceID string
+	DB      *sqlx.DB
+	Log     *log.Logger
+	Auth    *auth.Auth
+	KID     string
+
+	t       *testing.T
+	cleanup func()
+}
+
+// NewIntegration create a database, seeds it, constructs an authenticator.
+func NewIntegration(t *testing.T) *Test {
+	log, db, cleanup := NewUnit(t)
+
+	if err := schema.Seed(db); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create RSA keys to enable authentication in our service.
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Build an authenticator using this key lookup function to retrieve
+	// the corresponding public key.
+	kidID := "d8420866-1615-43d3-9a25-928120080b8f"
+	lookup := func(kid string) (*rsa.PublicKey, error) {
+		switch kid {
+		case kidID:
+			return &privateKey.PublicKey, nil
+		}
+		return nil, fmt.Errorf("no public key found for the specified kid: %s", kid)
+	}
+
+	auth, err := auth.New("RS256", lookup, auth.Keys{kidID: privateKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	test := Test{
+		TraceID: "00000000-0000-0000-0000-000000000000",
+		DB:      db,
+		Log:     log,
+		Auth:    auth,
+		KID:     kidID,
+		t:       t,
+		cleanup: cleanup,
+	}
+
+	return &test
+}
+
+// Teardown releases any resources used for the test.
+func (test *Test) Teardown() {
+	test.cleanup()
+}
+
+// Token geneates an authenricated token for a user.
+func (test *Test) Token(kid string, email, pass string) string {
+	u := user.New(test.Log, test.DB)
+	claims, err := u.Authenticate(context.Background(), test.TraceID, time.Now(), email, pass)
+	if err != nil {
+		test.t.Fatal(err)
+	}
+
+	token, err := test.Auth.GenerateToken(kid, claims)
+	if err != nil {
+		test.t.Fatal(err)
+	}
+
+	return token
 }
