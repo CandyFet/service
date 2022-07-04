@@ -9,7 +9,8 @@ import (
 	"time"
 
 	"github.com/dimfeld/httptreemux/v5"
-	"github.com/google/uuid"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // ctxKey represents the type of value for context key.
@@ -33,20 +34,30 @@ type Handler func(ctx context.Context, w http.ResponseWriter, r *http.Request) e
 // ibject for each of our http handlers. Feel free to add any configuration
 // data/logic on this App struct
 type App struct {
-	*httptreemux.ContextMux
+	mux      *httptreemux.ContextMux
+	otmux    http.Handler
 	shutdown chan os.Signal
 	mw       []Middleware
 }
 
 // NewApp creates an App value taht handle a set of routes for the application.
 func NewApp(shutdown chan os.Signal, mw ...Middleware) *App {
-	app := App{
-		ContextMux: httptreemux.NewContextMux(),
-		shutdown:   shutdown,
-		mw:         mw,
-	}
 
-	return &app
+	// Create a OpenTelemetry HTTP Handler which wraps our router. This will start
+	// initial span and annotate it with information about the request/response.
+	//
+	// This is configured to use W3C TraceContext standard to set the remote
+	// parent if an client request includes the appropriate headers.
+	// https://w3c.github.io/trace-context/
+
+	mux := httptreemux.NewContextMux()
+
+	return &App{
+		mux:      mux,
+		otmux:    otelhttp.NewHandler(mux, "request"),
+		shutdown: shutdown,
+		mw:       mw,
+	}
 }
 
 // Handle is our mechanism for mounting Handlers for given HTTP verb and path
@@ -61,14 +72,21 @@ func (a *App) Handle(method string, path string, handler Handler, mw ...Middlewa
 
 	h := func(w http.ResponseWriter, r *http.Request) {
 
+		// Pull the context from the request and
+		// use it as a separate parameter.
+		ctx := r.Context()
+
+		// Capture the parent request span from the context.
+		span := trace.SpanFromContext(ctx)
+
 		// Set the context with the required values to
 		// process the request.
 		v := Values{
-			TraceID: uuid.New().String(),
+			TraceID: span.SpanContext().TraceID().String(),
 			Now:     time.Now(),
 		}
 
-		ctx := context.WithValue(r.Context(), KeyValues, &v)
+		ctx = context.WithValue(ctx, KeyValues, &v)
 
 		if err := handler(ctx, w, r); err != nil {
 			a.SignalShutdown()
@@ -76,11 +94,19 @@ func (a *App) Handle(method string, path string, handler Handler, mw ...Middlewa
 		}
 	}
 
-	a.ContextMux.Handle(method, path, h)
+	a.mux.Handle(method, path, h)
 }
 
 // SignalShutdown is used to gracefully shutdown the app when an integrity
 // issue is identified.
 func (a *App) SignalShutdown() {
 	a.shutdown <- syscall.SIGTERM
+}
+
+// ServeHTTP implements the http.Handler interface. It's the entr point for
+// all htp traffic and allows the opentelemetry mux to run first to handle
+// trasing. The opentelemetry mux then calls te application mux to handle
+// application traffic.
+func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	a.otmux.ServeHTTP(w, r)
 }

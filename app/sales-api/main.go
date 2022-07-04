@@ -17,10 +17,16 @@ import (
 	"github.com/CandyFet/service/app/sales-api/handlers"
 	"github.com/CandyFet/service/business/auth"
 	"github.com/CandyFet/service/foundation/database"
-	"github.com/dgrijalva/jwt-go"
 
 	"github.com/ardanlabs/conf"
+	"github.com/dgrijalva/jwt-go"
 	"github.com/pkg/errors"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/exporters/zipkin"
+	"go.opentelemetry.io/otel/sdk/resource"
+	"go.opentelemetry.io/otel/sdk/trace"
+	semconv "go.opentelemetry.io/otel/semconv/v1.4.0"
 )
 
 // build is the git version of this program. It is set using build flags in the command line
@@ -58,6 +64,11 @@ func run(log *log.Logger) error {
 			Host       string `conf:"default:db"`
 			Name       string `conf:"default:postgres"`
 			DisableTLS bool   `conf:"default:true"`
+		}
+		Zipkin struct {
+			ReporterURI string  `conf:"default:http://zipkin:9411/api/v2/spans"`
+			ServiceName string  `conf:"default:sales-api"`
+			Probability float64 `conf:"default:0.05"`
 		}
 	}
 	cfg.Version.SVN = build
@@ -144,6 +155,38 @@ func run(log *log.Logger) error {
 		log.Printf("main: Database Stopping : %s", cfg.DB.Host)
 		db.Close()
 	}()
+
+	// =================================================================
+	// Start Tracing Support
+
+	log.Println("main: Initializing OT/ZIPKIN tracing support")
+
+	exporter, err := zipkin.New(
+		cfg.Zipkin.ReporterURI,
+	)
+
+	if err != nil {
+		return errors.Wrap(err, "creating new exporter")
+	}
+
+	traceProvider := trace.NewTracerProvider(
+		trace.WithSampler(trace.TraceIDRatioBased(cfg.Zipkin.Probability)),
+		trace.WithBatcher(exporter,
+			trace.WithMaxExportBatchSize(trace.DefaultMaxExportBatchSize),
+			trace.WithBatchTimeout(trace.DefaultScheduleDelay*time.Millisecond),
+			trace.WithMaxExportBatchSize(trace.DefaultMaxExportBatchSize),
+		),
+		trace.WithResource(
+			resource.NewWithAttributes(
+				semconv.SchemaURL,
+				semconv.ServiceNameKey.String(cfg.Zipkin.ServiceName),
+				attribute.String("exporter", "zipkin"),
+			),
+		),
+	)
+
+	otel.SetTracerProvider(traceProvider)
+	defer traceProvider.Shutdown(context.Background())
 
 	// =================================================================
 	// Start Debug Service
